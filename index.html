@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trích Xuất PDF: Lịch Sử & Tìm Nâng Cao</title>
+    <title>Trích Xuất PDF: Kéo Thả & Tìm Nâng Cao</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -50,6 +50,18 @@
             color: #1e293b;
             max-height: 500px; /* Giới hạn chiều cao nếu quá dài */
             overflow-y: auto;
+            position: relative;
+        }
+        .page-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            background-color: #e2e8f0;
+            color: #64748b;
+            font-size: 0.7em;
+            padding: 2px 8px;
+            border-bottom-left-radius: 6px;
+            border-top-right-radius: 6px; /* Match container border radius if needed */
         }
         .translation-block {
             margin-top: 8px;
@@ -119,7 +131,7 @@
     <div class="max-w-6xl mx-auto p-4 md:p-6">
         <header class="mb-6 text-center relative">
             <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF Thông Minh</h1>
-            <p class="text-gray-600">Tìm kiếm nâng cao, Lịch sử tra cứu, OCR & Dịch thuật</p>
+            <p class="text-gray-600">Tìm kiếm nâng cao, Lịch sử tra cứu, Kéo thả file</p>
             
             <!-- Bookmark Button -->
             <button onclick="toggleBookmarkModal()" class="absolute top-0 right-0 mt-2 md:mt-0 text-yellow-600 hover:text-yellow-700 font-medium flex items-center bg-yellow-50 hover:bg-yellow-100 px-3 py-1 rounded border border-yellow-200 transition">
@@ -133,19 +145,23 @@
         <!-- INPUT AREA -->
         <div class="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Column 1: File Input & Link Paste -->
+                <!-- Column 1: File Input (Drag & Drop) & Link Paste -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">1. Chọn nguồn tài liệu:</label>
                     
-                    <!-- File Input -->
-                    <input type="file" id="pdfInput" accept=".pdf" multiple
-                        class="block w-full text-sm text-gray-500 mb-3
-                        file:mr-4 file:py-2 file:px-4
-                        file:rounded-full file:border-0
-                        file:text-sm file:font-semibold
-                        file:bg-blue-50 file:text-blue-700
-                        hover:file:bg-blue-100 cursor-pointer border border-gray-300 rounded-lg p-1"
-                    />
+                    <!-- DRAG & DROP ZONE -->
+                    <div id="dropZone" class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-blue-50 hover:border-blue-400 transition cursor-pointer mb-3 relative bg-gray-50 group">
+                        <!-- Input ẩn nhưng phủ kín để click được -->
+                        <input type="file" id="pdfInput" accept=".pdf" multiple 
+                            class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                        />
+                        
+                        <div class="flex flex-col items-center justify-center pointer-events-none">
+                            <svg class="w-10 h-10 text-gray-400 group-hover:text-blue-500 mb-2 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <p class="text-sm text-gray-600 group-hover:text-blue-600 font-medium">Click chọn hoặc Kéo thả PDF vào đây</p>
+                            <p class="text-xs text-gray-400 mt-1" id="fileCountLabel">Chưa chọn file nào</p>
+                        </div>
+                    </div>
                     
                     <!-- URL/Path Input with Datalist History -->
                     <div class="relative">
@@ -161,7 +177,7 @@
                         </datalist>
                     </div>
                     <div class="flex justify-between mt-1">
-                        <p class="text-xs text-gray-400 italic" id="fileCountLabel">Chưa chọn file nào</p>
+                        <span class="text-xs text-gray-400">Hỗ trợ PDF, link Google Drive</span>
                         <button onclick="clearHistory('url')" class="text-xs text-red-300 hover:text-red-500">Xóa lịch sử Link</button>
                     </div>
                 </div>
@@ -299,40 +315,109 @@
         let searchIdCounter = 0;
         let isProcessing = false;
 
-        document.getElementById('pdfInput').addEventListener('change', function() {
-            const count = this.files.length;
-            document.getElementById('fileCountLabel').textContent = count > 0 ? `Đã chọn ${count} file` : 'Chưa chọn file nào';
+        // --- DRAG AND DROP LOGIC ---
+        const dropZone = document.getElementById('dropZone');
+        const pdfInput = document.getElementById('pdfInput');
+        const fileCountLabel = document.getElementById('fileCountLabel');
+
+        pdfInput.addEventListener('change', function() {
+            updateFileLabel(this.files);
         });
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Highlight drop zone when item is dragged over it
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('border-blue-500', 'bg-blue-100');
+            dropZone.classList.remove('border-gray-300', 'bg-gray-50');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('border-blue-500', 'bg-blue-100');
+            dropZone.classList.add('border-gray-300', 'bg-gray-50');
+        }
+
+        // Handle dropped files
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            if (files.length > 0) {
+                pdfInput.files = files;
+                updateFileLabel(files);
+            }
+        }
+
+        function updateFileLabel(files) {
+            const count = files.length;
+            if (count > 0) {
+                fileCountLabel.textContent = `Đã chọn ${count} file`;
+                fileCountLabel.classList.add('text-green-600', 'font-bold');
+                fileCountLabel.classList.remove('text-gray-400');
+            } else {
+                fileCountLabel.textContent = 'Chưa chọn file nào';
+                fileCountLabel.classList.remove('text-green-600', 'font-bold');
+                fileCountLabel.classList.add('text-gray-400');
+            }
+        }
 
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
-        // --- VIEW TOGGLE LOGIC (NEW) ---
+        // --- VIEW TOGGLE LOGIC (UPDATED WITH SCROLL) ---
         function toggleResultView(uniqueId) {
             const snippetDiv = document.getElementById(`snippet-${uniqueId}`);
             const fullDiv = document.getElementById(`full-${uniqueId}`);
             const btn = document.getElementById(`btn-${uniqueId}`);
             
             if (snippetDiv.classList.contains('hidden')) {
-                // Currently showing Full -> Switch to Snippet
+                // Đang xem đầy đủ -> Thu gọn
                 snippetDiv.classList.remove('hidden');
                 fullDiv.classList.add('hidden');
-                btn.innerHTML = `📖 Xem đầy đủ`;
+                // Lấy trang từ thuộc tính data-page của nút
+                const pageNum = btn.getAttribute('data-page');
+                btn.innerHTML = `📖 Xem trang ${pageNum}`;
                 btn.classList.replace('bg-gray-500', 'bg-blue-100');
                 btn.classList.replace('text-white', 'text-blue-700');
             } else {
-                // Currently showing Snippet -> Switch to Full
+                // Đang thu gọn -> Xem đầy đủ
                 snippetDiv.classList.add('hidden');
                 fullDiv.classList.remove('hidden');
                 btn.innerHTML = `🔼 Thu gọn`;
                 btn.classList.replace('bg-blue-100', 'bg-gray-500');
                 btn.classList.replace('text-blue-700', 'text-white');
                 
-                // Auto scroll to the first highlight in full view if needed
+                // AUTO SCROLL LOGIC
+                // 1. Scroll container to make the full view visible
+                // fullDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+                // 2. Scroll INSIDE the full view to the first highlight
                 const firstHighlight = fullDiv.querySelector('.highlight');
                 if (firstHighlight) {
-                    firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Timeout to allow rendering
+                    setTimeout(() => {
+                         firstHighlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 100);
                 }
             }
         }
@@ -688,9 +773,14 @@
                         const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
                         const totalPages = pdf.numPages;
 
+                        const fileResults = [];
+
+                        // Iterate through ALL pages
                         for (let i = 1; i <= totalPages; i++) {
                             const progress = ((tIndex + (i / totalPages)) / totalTasks) * 100;
                             globalProgressBar.style.width = `${progress}%`;
+                            
+                            let pageText = "";
                             if (useOCR) {
                                 const page = await pdf.getPage(i);
                                 const viewport = page.getViewport({ scale: 2.0 });
@@ -699,45 +789,51 @@
                                 canvas.height = viewport.height; canvas.width = viewport.width;
                                 await page.render({ canvasContext: context, viewport: viewport }).promise;
                                 const { data: { text } } = await worker.recognize(canvas);
-                                fullText += text + "\n"; 
+                                pageText = text;
                             } else {
                                 const page = await pdf.getPage(i);
                                 const textContent = await page.getTextContent();
-                                if (strictTable) fullText += extractTextWithLayout(textContent);
-                                else fullText += textContent.items.map(item => item.str).join(' ') + " ";
+                                if (strictTable) pageText = extractTextWithLayout(textContent);
+                                else pageText = textContent.items.map(item => item.str).join(' ');
                             }
-                        }
 
-                        let sentences = [];
-                        if (strictTable || useOCR) sentences = fullText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
-                        else sentences = fullText.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+                            // Analyze current page
+                            let sentences = [];
+                            if (strictTable || useOCR) sentences = pageText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
+                            else sentences = pageText.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
 
-                        const cleanSentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
-                        const fileResults = [];
+                            const cleanSentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
+                            
+                            for (let sIdx = 0; sIdx < cleanSentences.length; sIdx++) {
+                                const currentSentence = cleanSentences[sIdx];
+                                const currentSentenceLower = currentSentence.toLowerCase();
+                                let isMatch = false;
 
-                        for (let sIdx = 0; sIdx < cleanSentences.length; sIdx++) {
-                            const currentSentence = cleanSentences[sIdx];
-                            const currentSentenceLower = currentSentence.toLowerCase();
-                            let isMatch = false;
-
-                            for (let kIdx = 0; kIdx < lowerKeywords.length; kIdx++) {
-                                const kw = lowerKeywords[kIdx];
-                                if (searchMode === 'exact') {
-                                    const regex = new RegExp(`\\b${escapeRegExp(kw)}\\b`, 'i');
-                                    if (regex.test(currentSentence)) { isMatch = true; break; }
-                                } else if (searchMode === 'smart') {
-                                    const parts = smartKeywordsParts[kIdx];
-                                    if (parts.every(part => currentSentenceLower.includes(part))) { isMatch = true; break; }
-                                } else {
-                                    if (currentSentenceLower.includes(kw)) { isMatch = true; break; }
+                                for (let kIdx = 0; kIdx < lowerKeywords.length; kIdx++) {
+                                    const kw = lowerKeywords[kIdx];
+                                    if (searchMode === 'exact') {
+                                        const regex = new RegExp(`\\b${escapeRegExp(kw)}\\b`, 'i');
+                                        if (regex.test(currentSentence)) { isMatch = true; break; }
+                                    } else if (searchMode === 'smart') {
+                                        const parts = smartKeywordsParts[kIdx];
+                                        if (parts.every(part => currentSentenceLower.includes(part))) { isMatch = true; break; }
+                                    } else {
+                                        if (currentSentenceLower.includes(kw)) { isMatch = true; break; }
+                                    }
                                 }
-                            }
 
-                            if (isMatch) {
-                                const startIndex = Math.max(0, sIdx - 3);
-                                const endIndex = Math.min(cleanSentences.length - 1, sIdx + 3);
-                                const contextBlock = cleanSentences.slice(startIndex, endIndex + 1);
-                                fileResults.push({ content: contextBlock, targetIndex: sIdx - startIndex });
+                                if (isMatch) {
+                                    const startIndex = Math.max(0, sIdx - 3);
+                                    const endIndex = Math.min(cleanSentences.length - 1, sIdx + 3);
+                                    const contextBlock = cleanSentences.slice(startIndex, endIndex + 1);
+                                    
+                                    fileResults.push({ 
+                                        content: contextBlock, 
+                                        targetIndex: sIdx - startIndex,
+                                        pageNum: i,
+                                        fullPageText: pageText
+                                    });
+                                }
                             }
                         }
 
@@ -764,8 +860,8 @@
                                     return `<div class="pl-2 opacity-70 text-gray-600">${displayLine}</div>`;
                                 }).join('');
 
-                                // Generate Full Text HTML
-                                let fullHTML = fullText.replace(/[<>]/g, ""); // Basic sanitize
+                                // Generate Full Page HTML
+                                let fullHTML = res.fullPageText.replace(/[<>]/g, ""); // Basic sanitize
                                 if (searchMode === 'smart') {
                                      smartKeywordsParts.forEach(parts => { parts.forEach(part => { const partRegex = new RegExp(`(${escapeRegExp(part)})`, 'gi'); fullHTML = fullHTML.replace(partRegex, match => `<span class="highlight">${match}</span>`); }); });
                                 } else {
@@ -781,15 +877,16 @@
                                 
                                 li.innerHTML = `
                                     <div class="flex justify-between items-start mb-2">
-                                        <div class="text-xs font-bold text-gray-400">Kết quả #${rIdx + 1}</div>
-                                        <button id="btn-${uniqueId}" onclick="toggleResultView('${uniqueId}')" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded border border-blue-200 transition">
-                                            📖 Xem đầy đủ
+                                        <div class="text-xs font-bold text-gray-400">Kết quả #${rIdx + 1} - Trang ${res.pageNum}</div>
+                                        <button id="btn-${uniqueId}" data-page="${res.pageNum}" onclick="toggleResultView('${uniqueId}')" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 px-2 py-1 rounded border border-blue-200 transition">
+                                            📖 Xem trang ${res.pageNum}
                                         </button>
                                     </div>
                                     <div id="snippet-${uniqueId}" class="result-content text-sm block">
                                         ${htmlContent}
                                     </div>
                                     <div id="full-${uniqueId}" class="full-content-view hidden">
+                                        <span class="page-badge">Trang ${res.pageNum}</span>
                                         ${fullHTML}
                                     </div>
                                     ${translationContainer}
