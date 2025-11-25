@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trích Xuất PDF Thông Minh (Đa Ngôn Ngữ)</title>
+    <title>Trích Xuất PDF Theo Tab (Đa Ngôn Ngữ)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -40,35 +40,50 @@
             border: 4px solid #f3f3f3;
             border-top: 4px solid #3b82f6;
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             animation: spin 1s linear infinite;
             display: inline-block;
             vertical-align: middle;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        /* Tooltip style cho từ khóa dịch */
-        .translated-tag {
-            font-size: 0.75rem;
-            background-color: #dbeafe;
-            color: #1e40af;
-            padding: 2px 6px;
-            border-radius: 4px;
-            margin-left: 8px;
-            display: inline-block;
+        /* Tab Styles */
+        .tab-btn {
+            transition: all 0.3s ease;
+        }
+        .tab-btn.active {
+            border-bottom: 2px solid #2563eb;
+            color: #2563eb;
+            background-color: #eff6ff;
+        }
+        .tab-btn:hover:not(.active) {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen font-sans text-gray-800">
 
-    <div class="max-w-5xl mx-auto p-6">
-        <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF Đa Ngôn Ngữ</h1>
-            <p class="text-gray-600">Tìm kiếm song ngữ (Anh ↔ Việt), hỗ trợ bảng biểu và OCR</p>
+    <div class="max-w-6xl mx-auto p-4 md:p-6">
+        <header class="mb-6 text-center">
+            <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF Đa Tab</h1>
+            <p class="text-gray-600">Tìm kiếm song ngữ, OCR và quản lý kết quả theo từng Tab riêng biệt</p>
         </header>
 
-        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <!-- INPUT AREA -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">1. Chọn file PDF (Giữ Ctrl để chọn nhiều)</label>
@@ -84,231 +99,294 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">2. Nhập từ khóa (Tiếng Việt hoặc Anh)</label>
-                    <input type="text" id="keywordInput" placeholder="VD: Hợp đồng, Invoice, Total..." 
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    />
-                    <div id="translationPreview" class="mt-2 text-sm text-gray-500 min-h-[20px]"></div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">2. Nhập từ khóa mới</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="keywordInput" placeholder="Nhập từ khóa..." 
+                            class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            onkeypress="if(event.key === 'Enter') processPDFs()"
+                        />
+                        <button onclick="processPDFs()" id="btnProcess"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-200 shadow flex items-center whitespace-nowrap">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            Tìm Kiếm
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div class="mt-4 flex flex-wrap items-center justify-center gap-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                <div class="flex items-center" title="Dùng cho file scan, ảnh chụp">
-                    <input type="checkbox" id="useOCR" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
-                    <label for="useOCR" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
-                        Bật OCR (Quét ảnh)
-                    </label>
+            <!-- Options -->
+            <div class="mt-4 flex flex-wrap items-center gap-4 text-sm">
+                <div class="flex items-center">
+                    <input type="checkbox" id="useOCR" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
+                    <label for="useOCR" class="ml-2 text-gray-700 cursor-pointer">Bật OCR (Quét ảnh)</label>
                 </div>
                 
-                <div class="flex items-center" title="Cố gắng giữ nguyên hàng cột của bảng">
-                    <input type="checkbox" id="strictTable" checked class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500">
-                    <label for="strictTable" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
-                        Chế độ Bảng (Giữ cấu trúc)
-                    </label>
+                <div class="flex items-center">
+                    <input type="checkbox" id="strictTable" checked class="w-4 h-4 text-green-600 rounded focus:ring-green-500">
+                    <label for="strictTable" class="ml-2 text-gray-700 cursor-pointer">Chế độ Bảng (Giữ cấu trúc)</label>
                 </div>
 
-                <div class="flex items-center border-l pl-6 border-gray-300" title="Tự động dịch từ khóa sang ngôn ngữ còn lại">
-                    <input type="checkbox" id="autoTranslate" checked class="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500">
-                    <label for="autoTranslate" class="ml-2 text-sm font-bold text-purple-700 cursor-pointer select-none flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
-                        </svg>
-                        Dịch tự động (Anh ↔ Việt)
+                <div class="flex items-center">
+                    <input type="checkbox" id="autoTranslate" checked class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                    <label for="autoTranslate" class="ml-2 font-medium text-purple-700 cursor-pointer flex items-center">
+                        <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                        Dịch tự động
                     </label>
                 </div>
             </div>
 
-            <div class="mt-6 text-center">
-                <button onclick="processPDFs()" id="btnProcess"
-                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg transition duration-200 flex items-center justify-center mx-auto space-x-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
-                    <span>Bắt Đầu Tìm Kiếm</span>
-                </button>
+            <!-- Global Progress Bar (Shows when ANY search is running) -->
+            <div id="globalProgressContainer" class="hidden mt-4 w-full bg-gray-200 rounded-full h-1.5">
+                <div id="globalProgressBar" class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
-            
-            <div id="progressContainer" class="hidden mt-4 w-full bg-gray-200 rounded-full h-2.5">
-                <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
-            </div>
-            <div id="statusMessage" class="mt-2 text-center text-sm text-gray-500 hidden font-medium"></div>
         </div>
 
-        <div id="resultContainer" class="hidden">
-            <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
-                Kết quả tìm kiếm
-                <span id="activeKeywordsBadge" class="ml-3 text-sm font-normal text-gray-500"></span>
-                <span id="totalMatchCount" class="ml-auto bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">0</span>
-            </h2>
-            <ul id="resultsList" class="space-y-4 pb-10"></ul>
+        <!-- TABS CONTAINER -->
+        <div id="mainTabsContainer" class="hidden">
+            <!-- Tab Navigation -->
+            <div class="flex overflow-x-auto border-b border-gray-200 mb-4 no-scrollbar" id="tabsNav">
+                <!-- Tabs will be injected here -->
+            </div>
+
+            <!-- Tab Contents -->
+            <div id="tabsContentArea">
+                <!-- Content will be injected here -->
+            </div>
         </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="text-center py-10 text-gray-400">
+            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            <p>Kết quả tìm kiếm sẽ xuất hiện ở đây</p>
+        </div>
+
     </div>
 
     <script>
+        // --- GLOBAL VARIABLES & HELPERS ---
+        let searchIdCounter = 0;
+        let isProcessing = false;
+
         document.getElementById('pdfInput').addEventListener('change', function() {
             const count = this.files.length;
             document.getElementById('fileCountLabel').textContent = count > 0 ? `Đã chọn ${count} file` : 'Chưa chọn file nào';
         });
 
-        // Hàm hỗ trợ: Escape Regex
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
-        // Hàm Dịch Thuật (Sử dụng API MyMemory miễn phí)
+        // --- TRANSLATION LOGIC ---
         async function translateKeyword(text) {
-            // Logic phát hiện ngôn ngữ dựa trên ký tự có dấu
             const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(text);
-            
-            // Nếu là Tiếng Việt -> Dịch sang Anh. Nếu không (coi là Anh) -> Dịch sang Việt
             const langPair = isVietnamese ? 'vi|en' : 'en|vi';
-            const detectedLabel = isVietnamese ? 'Phát hiện Tiếng Việt ➝ Dịch sang Anh' : 'Phát hiện Tiếng Anh ➝ Dịch sang Việt';
+            const detectedLabel = isVietnamese ? 'Việt ➝ Anh' : 'Anh ➝ Việt';
 
             try {
                 const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`);
                 const data = await response.json();
                 
                 if (data && data.responseData && data.responseData.translatedText) {
-                    // API này đôi khi trả về lỗi trong text nếu quá limit, kiểm tra sơ bộ
                     if (data.responseData.translatedText.includes("MYMEMORY WARNING")) {
-                        console.warn("Translation limit reached or error");
                         return { text: null, label: detectedLabel };
                     }
                     return { text: data.responseData.translatedText, label: detectedLabel };
                 }
             } catch (error) {
-                console.error("Lỗi dịch thuật:", error);
-                return { text: null, label: detectedLabel };
+                console.error("Lỗi dịch:", error);
             }
             return { text: null, label: detectedLabel };
         }
 
-        // Hàm sắp xếp text items để tái tạo dòng (cho bảng)
+        // --- TEXT EXTRACTION HELPER ---
         function extractTextWithLayout(textContent) {
             const items = textContent.items;
             if (items.length === 0) return "";
-
             items.sort((a, b) => {
                 const yDiff = Math.abs(a.transform[5] - b.transform[5]);
-                if (yDiff < 4) { 
-                    return a.transform[4] - b.transform[4]; 
-                }
-                return b.transform[5] - a.transform[5]; 
+                return yDiff < 4 ? a.transform[4] - b.transform[4] : b.transform[5] - a.transform[5];
             });
-
             let text = "";
             let lastY = -1;
-            
             for (const item of items) {
-                if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-                    text += "\n"; 
-                } else if (lastY !== -1) {
-                    text += "   "; 
-                }
+                if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) text += "\n";
+                else if (lastY !== -1) text += "   ";
                 text += item.str;
                 lastY = item.transform[5];
             }
-            return text + "\n"; 
+            return text + "\n";
         }
 
+        // --- TAB MANAGEMENT LOGIC ---
+        function createNewTab(keyword, translatedInfo) {
+            searchIdCounter++;
+            const tabId = `tab-${searchIdCounter}`;
+            
+            // 1. Hide empty state
+            document.getElementById('emptyState').classList.add('hidden');
+            document.getElementById('mainTabsContainer').classList.remove('hidden');
+
+            // 2. Create Tab Button
+            const tabBtn = document.createElement('button');
+            tabBtn.className = 'tab-btn flex items-center px-4 py-2 mr-2 text-sm font-medium text-gray-500 bg-white border border-transparent rounded-t-lg hover:text-gray-700 hover:border-gray-300 focus:outline-none';
+            tabBtn.dataset.target = tabId;
+            tabBtn.innerHTML = `
+                <span class="max-w-[100px] truncate" title="${keyword}">${keyword}</span>
+                <span class="ml-2 text-xs bg-gray-200 text-gray-600 rounded-full px-1.5 py-0.5" id="badge-${tabId}">...</span>
+                <span class="ml-2 text-gray-400 hover:text-red-500 rounded-full p-0.5" onclick="closeTab('${tabId}', event)">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </span>
+            `;
+            tabBtn.onclick = (e) => switchTab(tabId);
+            document.getElementById('tabsNav').appendChild(tabBtn);
+
+            // 3. Create Tab Content Container
+            const contentDiv = document.createElement('div');
+            contentDiv.id = tabId;
+            contentDiv.className = 'tab-content';
+            
+            // Translation info block
+            let transHtml = '';
+            if (translatedInfo && translatedInfo.text) {
+                transHtml = `
+                    <div class="mb-3 bg-blue-50 text-blue-800 text-xs px-3 py-2 rounded flex items-center border border-blue-100">
+                        <span class="font-bold mr-2">Dịch tự động (${translatedInfo.label}):</span>
+                        <span>"${keyword}"</span> <span class="mx-2">↔</span> <span>"${translatedInfo.text}"</span>
+                    </div>`;
+            }
+
+            contentDiv.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">Kết quả cho: <span class="text-blue-600">"${keyword}"</span></h2>
+                    <div id="status-${tabId}" class="text-sm font-medium text-orange-500 flex items-center">
+                        <div class="loader mr-2"></div> Đang khởi tạo...
+                    </div>
+                </div>
+                ${transHtml}
+                <ul id="list-${tabId}" class="space-y-4 pb-10 min-h-[200px]"></ul>
+            `;
+            document.getElementById('tabsContentArea').appendChild(contentDiv);
+
+            // 4. Activate new tab
+            switchTab(tabId);
+
+            return tabId;
+        }
+
+        function switchTab(tabId) {
+            // Remove active class from all buttons and contents
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // Activate target
+            const btn = document.querySelector(`.tab-btn[data-target="${tabId}"]`);
+            const content = document.getElementById(tabId);
+            
+            if (btn && content) {
+                btn.classList.add('active');
+                content.classList.add('active');
+            }
+        }
+
+        function closeTab(tabId, event) {
+            event.stopPropagation(); // Prevent switching to tab when clicking close
+            const btn = document.querySelector(`.tab-btn[data-target="${tabId}"]`);
+            const content = document.getElementById(tabId);
+            
+            if (btn) btn.remove();
+            if (content) content.remove();
+
+            // If we closed the active tab, switch to the last available one
+            if (!document.querySelector('.tab-btn.active')) {
+                const remainingBtns = document.querySelectorAll('.tab-btn');
+                if (remainingBtns.length > 0) {
+                    switchTab(remainingBtns[remainingBtns.length - 1].dataset.target);
+                } else {
+                    document.getElementById('mainTabsContainer').classList.add('hidden');
+                    document.getElementById('emptyState').classList.remove('hidden');
+                }
+            }
+        }
+
+        // --- MAIN PROCESSING LOGIC ---
         async function processPDFs() {
             const fileInput = document.getElementById('pdfInput');
             const keywordInput = document.getElementById('keywordInput');
             const useOCR = document.getElementById('useOCR').checked;
             const strictTable = document.getElementById('strictTable').checked;
             const autoTranslate = document.getElementById('autoTranslate').checked;
-            
-            const statusMsg = document.getElementById('statusMessage');
-            const resultsList = document.getElementById('resultsList');
-            const resultContainer = document.getElementById('resultContainer');
-            const btnProcess = document.getElementById('btnProcess');
-            const progressBar = document.getElementById('progressBar');
-            const progressContainer = document.getElementById('progressContainer');
-            const totalMatchBadge = document.getElementById('totalMatchCount');
-            const activeKeywordsBadge = document.getElementById('activeKeywordsBadge');
-            const translationPreview = document.getElementById('translationPreview');
+            const globalProgressBar = document.getElementById('globalProgressBar');
+            const globalProgressContainer = document.getElementById('globalProgressContainer');
 
-            // Reset UI
-            resultsList.innerHTML = '';
-            resultContainer.classList.add('hidden');
-            progressContainer.classList.add('hidden');
-            progressBar.style.width = '0%';
-            statusMsg.classList.remove('hidden');
-            statusMsg.innerHTML = '';
-            translationPreview.innerHTML = '';
-            let totalMatchesGlobal = 0;
-
-            if (fileInput.files.length === 0) { alert('Vui lòng chọn file PDF.'); return; }
             const originalKeyword = keywordInput.value.trim();
+            if (fileInput.files.length === 0) { alert('Vui lòng chọn file PDF.'); return; }
             if (!originalKeyword) { alert('Vui lòng nhập từ khóa.'); return; }
 
-            btnProcess.disabled = true;
-            btnProcess.innerHTML = '<div class="loader"></div><span class="ml-2">Đang xử lý...</span>';
-            progressContainer.classList.remove('hidden');
+            // Start UI Feedback
+            isProcessing = true;
+            document.getElementById('btnProcess').disabled = true;
+            document.getElementById('btnProcess').classList.add('opacity-50', 'cursor-not-allowed');
+            globalProgressContainer.classList.remove('hidden');
+            globalProgressBar.style.width = '5%';
 
-            // --- BƯỚC 1: Xử lý từ khóa (Dịch) ---
-            let searchKeywords = [originalKeyword]; // Mảng chứa các từ khóa cần tìm
-            
+            // Prepare Keywords
+            let searchKeywords = [originalKeyword];
+            let translatedInfo = { text: null, label: '' };
+
             if (autoTranslate) {
-                statusMsg.textContent = "Đang dịch từ khóa...";
-                
                 const transResult = await translateKeyword(originalKeyword);
-                const translated = transResult.text;
-                const label = transResult.label;
-
-                if (translated && translated.toLowerCase() !== originalKeyword.toLowerCase()) {
-                    searchKeywords.push(translated);
-                    // Hiển thị trạng thái rõ ràng cho người dùng
-                    translationPreview.innerHTML = `
-                        <div class="flex items-center text-blue-700 bg-blue-50 p-2 rounded border border-blue-200">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span>${label}: <b>"${translated}"</b></span>
-                        </div>`;
-                } else {
-                    translationPreview.innerHTML = `<span class="text-gray-500 italic">Không tìm thấy bản dịch khác biệt hoặc lỗi kết nối. Chỉ tìm: "${originalKeyword}"</span>`;
+                if (transResult.text && transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
+                    searchKeywords.push(transResult.text);
+                    translatedInfo = transResult;
                 }
-            } else {
-                translationPreview.innerHTML = `Đang tìm chính xác: <b>"${originalKeyword}"</b>`;
             }
 
-            // Hiển thị danh sách từ khóa lên UI
-            activeKeywordsBadge.textContent = `(Đang tìm: ${searchKeywords.join(', ')})`;
+            // CREATE NEW TAB
+            const tabId = createNewTab(originalKeyword, translatedInfo);
+            const tabStatus = document.getElementById(`status-${tabId}`);
+            const tabList = document.getElementById(`list-${tabId}`);
+            const tabBadge = document.getElementById(`badge-${tabId}`);
 
-            // Chuẩn bị Regex để highlight tất cả các từ khóa
-            // Sắp xếp từ dài đến ngắn để highlight đúng (tránh trường hợp từ ngắn nằm trong từ dài)
+            // Prepare Regex
             const sortedKeywords = [...searchKeywords].sort((a, b) => b.length - a.length);
             const regexPattern = sortedKeywords.map(k => escapeRegExp(k)).join('|');
             const highlightRegex = new RegExp(`(${regexPattern})`, 'gi');
-            
-            // Chuẩn bị danh sách từ khóa chữ thường để so sánh
             const lowerKeywords = searchKeywords.map(k => k.toLowerCase());
 
-            // --- BƯỚC 2: Khởi tạo OCR (Nếu cần) ---
+            // Initialize OCR if needed
             let worker = null;
             if (useOCR) {
-                statusMsg.textContent = 'Đang khởi động OCR engine...';
+                tabStatus.textContent = "Đang tải OCR Engine...";
                 try {
-                    worker = await Tesseract.createWorker('vie'); // Ưu tiên tiếng Việt
+                    worker = await Tesseract.createWorker('vie');
                 } catch (e) {
-                    alert("Lỗi tải thư viện OCR. Kiểm tra mạng.");
-                    btnProcess.disabled = false;
+                    tabStatus.innerHTML = `<span class="text-red-500">Lỗi OCR: ${e.message}</span>`;
+                    cleanup();
                     return;
                 }
             }
 
             try {
                 const files = Array.from(fileInput.files);
+                let totalMatchesInTab = 0;
                 
                 for (let fIndex = 0; fIndex < files.length; fIndex++) {
                     const file = files[fIndex];
                     let fullText = "";
                     
+                    // Update Status
+                    tabStatus.innerHTML = `<div class="loader mr-2"></div> Đang quét: ${file.name} (${fIndex + 1}/${files.length})`;
+
                     const arrayBuffer = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                     const totalPages = pdf.numPages;
 
                     for (let i = 1; i <= totalPages; i++) {
-                        // Cập nhật Progress Bar
+                        // Update Progress
                         const progress = ((fIndex + (i / totalPages)) / files.length) * 100;
-                        progressBar.style.width = `${progress}%`;
-                        statusMsg.textContent = `Đang quét: ${file.name} (Trang ${i}/${totalPages})`;
+                        globalProgressBar.style.width = `${progress}%`;
 
                         if (useOCR) {
                             const page = await pdf.getPage(i);
@@ -317,13 +395,11 @@
                             const context = canvas.getContext('2d');
                             canvas.height = viewport.height; canvas.width = viewport.width;
                             await page.render({ canvasContext: context, viewport: viewport }).promise;
-                            
                             const { data: { text } } = await worker.recognize(canvas);
                             fullText += text + "\n"; 
                         } else {
                             const page = await pdf.getPage(i);
                             const textContent = await page.getTextContent();
-                            
                             if (strictTable) {
                                 fullText += extractTextWithLayout(textContent);
                             } else {
@@ -332,9 +408,8 @@
                         }
                     }
 
-                    // --- BƯỚC 3: Phân tích & Tìm kiếm ---
+                    // --- SEARCH LOGIC ---
                     let sentences = [];
-                    // Tách câu dựa trên chế độ
                     if (strictTable || useOCR) {
                         sentences = fullText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
                     } else {
@@ -344,29 +419,19 @@
                     const cleanSentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
                     const fileResults = [];
 
-                    for (let i = 0; i < cleanSentences.length; i++) {
-                        const currentSentenceLower = cleanSentences[i].toLowerCase();
-                        
-                        // Kiểm tra xem câu hiện tại có chứa BẤT KỲ từ khóa nào không
-                        const isMatch = lowerKeywords.some(kw => currentSentenceLower.includes(kw));
-
-                        if (isMatch) {
-                            // Lấy ngữ cảnh (context)
-                            const startIndex = Math.max(0, i - 5);
-                            const endIndex = Math.min(cleanSentences.length - 1, i + 5);
+                    for (let sIdx = 0; sIdx < cleanSentences.length; sIdx++) {
+                        const currentSentenceLower = cleanSentences[sIdx].toLowerCase();
+                        if (lowerKeywords.some(kw => currentSentenceLower.includes(kw))) {
+                            const startIndex = Math.max(0, sIdx - 3); // Context context -3 to +3
+                            const endIndex = Math.min(cleanSentences.length - 1, sIdx + 3);
                             const contextBlock = cleanSentences.slice(startIndex, endIndex + 1);
-                            
-                            fileResults.push({
-                                content: contextBlock,
-                                targetIndex: i - startIndex
-                            });
+                            fileResults.push({ content: contextBlock, targetIndex: sIdx - startIndex });
                         }
                     }
 
-                    // --- BƯỚC 4: Hiển thị kết quả ---
+                    // --- APPEND RESULTS TO TAB ---
                     if (fileResults.length > 0) {
-                        totalMatchesGlobal += fileResults.length;
-                        resultContainer.classList.remove('hidden');
+                        totalMatchesInTab += fileResults.length;
                         
                         const fileHeader = document.createElement('div');
                         fileHeader.className = "file-header";
@@ -375,55 +440,57 @@
                                 <span>📄 File: ${file.name}</span>
                                 <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded">${fileResults.length} kết quả</span>
                             </div>`;
-                        resultsList.appendChild(fileHeader);
+                        tabList.appendChild(fileHeader);
 
                         fileResults.forEach((res) => {
                             const li = document.createElement('li');
                             li.className = "bg-white p-4 rounded-lg shadow border-l-4 border-gray-300 hover:border-blue-500 transition mb-4 ml-4 overflow-x-auto";
                             
-                            // Render nội dung
                             const htmlContent = res.content.map((line, idx) => {
                                 let displayLine = line.replace(/\n/g, ''); 
-                                
-                                // Logic Highlight Mới: Tìm và highlight tất cả các từ khóa
                                 displayLine = displayLine.replace(highlightRegex, match => `<span class="highlight">${match}</span>`);
-
                                 if (idx === res.targetIndex) {
-                                    return `<div class="bg-blue-50 py-1 pl-2 border-l-2 border-blue-300">${displayLine}</div>`;
+                                    return `<div class="bg-blue-50 py-1 pl-2 border-l-2 border-blue-300 font-medium text-gray-900">${displayLine}</div>`;
                                 }
-                                return `<div class="pl-2 opacity-80">${displayLine}</div>`;
+                                return `<div class="pl-2 opacity-70 text-gray-600">${displayLine}</div>`;
                             }).join('');
 
-                            li.innerHTML = `<div class="result-content text-sm text-gray-700">${htmlContent}</div>`;
-                            resultsList.appendChild(li);
+                            li.innerHTML = `<div class="result-content text-sm">${htmlContent}</div>`;
+                            tabList.appendChild(li);
                         });
                     }
                 }
 
-                if (useOCR && worker) await worker.terminate();
-
-                if (totalMatchBadge) totalMatchBadge.textContent = totalMatchesGlobal;
-                progressBar.style.width = '100%';
-                
-                if (totalMatchesGlobal === 0) {
-                    statusMsg.innerHTML = `<span class="text-red-500 font-bold">Không tìm thấy kết quả nào cho: "${searchKeywords.join('" hoặc "')}"</span>`;
+                // Finalize Tab State
+                if (totalMatchesInTab === 0) {
+                    tabStatus.className = "text-sm font-bold text-red-500";
+                    tabStatus.textContent = "Không tìm thấy kết quả nào.";
+                    tabList.innerHTML = `<div class="text-center text-gray-400 italic mt-10">Không có dữ liệu trùng khớp trong các file đã chọn.</div>`;
                 } else {
-                    statusMsg.className = "mt-2 text-center text-sm text-green-600 font-bold";
-                    statusMsg.textContent = 'Hoàn tất quá trình tìm kiếm!';
+                    tabStatus.className = "text-sm font-bold text-green-600";
+                    tabStatus.textContent = `Hoàn tất! Tìm thấy ${totalMatchesInTab} kết quả.`;
                 }
+                tabBadge.textContent = totalMatchesInTab;
+                tabBadge.className = `ml-2 text-xs px-1.5 py-0.5 rounded-full text-white ${totalMatchesInTab > 0 ? 'bg-red-500' : 'bg-gray-400'}`;
 
             } catch (error) {
                 console.error(error);
-                statusMsg.className = "mt-2 text-center text-sm text-red-600 font-bold";
-                statusMsg.textContent = 'Lỗi nghiêm trọng: ' + error.message;
+                tabStatus.className = "text-sm font-bold text-red-600";
+                tabStatus.textContent = 'Lỗi: ' + error.message;
             } finally {
-                btnProcess.disabled = false;
-                btnProcess.innerHTML = `
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <span>Bắt Đầu Tìm Kiếm</span>`;
+                if (worker) await worker.terminate();
+                cleanup();
             }
+        }
+
+        function cleanup() {
+            isProcessing = false;
+            document.getElementById('btnProcess').disabled = false;
+            document.getElementById('btnProcess').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('globalProgressBar').style.width = '0%';
+            setTimeout(() => {
+                if(!isProcessing) document.getElementById('globalProgressContainer').classList.add('hidden');
+            }, 1000);
         }
     </script>
 </body>
