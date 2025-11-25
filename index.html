@@ -118,22 +118,25 @@
 
             <!-- Options -->
             <div class="mt-4 flex flex-wrap items-center gap-4 text-sm">
-                <div class="flex items-center">
+                <div class="flex items-center mr-4">
                     <input type="checkbox" id="useOCR" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500">
                     <label for="useOCR" class="ml-2 text-gray-700 cursor-pointer">Bật OCR (Quét ảnh)</label>
                 </div>
                 
-                <div class="flex items-center">
+                <div class="flex items-center mr-4">
                     <input type="checkbox" id="strictTable" checked class="w-4 h-4 text-green-600 rounded focus:ring-green-500">
                     <label for="strictTable" class="ml-2 text-gray-700 cursor-pointer">Chế độ Bảng (Giữ cấu trúc)</label>
                 </div>
 
+                <!-- Tách biệt tùy chọn dịch -->
+                <div class="flex items-center border-l pl-4 border-gray-300">
+                    <input type="checkbox" id="translateViEn" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                    <label for="translateViEn" class="ml-2 font-medium text-purple-700 cursor-pointer">Dịch Việt ➝ Anh</label>
+                </div>
+
                 <div class="flex items-center">
-                    <input type="checkbox" id="autoTranslate" checked class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
-                    <label for="autoTranslate" class="ml-2 font-medium text-purple-700 cursor-pointer flex items-center">
-                        <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
-                        Dịch tự động
-                    </label>
+                    <input type="checkbox" id="translateEnVi" class="w-4 h-4 text-purple-600 rounded focus:ring-purple-500">
+                    <label for="translateEnVi" class="ml-2 font-medium text-purple-700 cursor-pointer">Dịch Anh ➝ Việt</label>
                 </div>
             </div>
 
@@ -179,10 +182,9 @@
         }
 
         // --- TRANSLATION LOGIC ---
-        async function translateKeyword(text) {
-            const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(text);
-            const langPair = isVietnamese ? 'vi|en' : 'en|vi';
-            const detectedLabel = isVietnamese ? 'Việt ➝ Anh' : 'Anh ➝ Việt';
+        // langPair: 'vi|en' hoặc 'en|vi'
+        async function translateKeyword(text, langPair) {
+            const detectedLabel = langPair === 'vi|en' ? 'Việt ➝ Anh' : 'Anh ➝ Việt';
 
             try {
                 const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`);
@@ -220,7 +222,8 @@
         }
 
         // --- TAB MANAGEMENT LOGIC ---
-        function createNewTab(keyword, translatedInfo) {
+        // translatedInfos is now an Array of objects {text, label}
+        function createNewTab(keyword, translatedInfos) {
             searchIdCounter++;
             const tabId = `tab-${searchIdCounter}`;
             
@@ -249,12 +252,14 @@
             
             // Translation info block
             let transHtml = '';
-            if (translatedInfo && translatedInfo.text) {
-                transHtml = `
-                    <div class="mb-3 bg-blue-50 text-blue-800 text-xs px-3 py-2 rounded flex items-center border border-blue-100">
-                        <span class="font-bold mr-2">Dịch tự động (${translatedInfo.label}):</span>
-                        <span>"${keyword}"</span> <span class="mx-2">↔</span> <span>"${translatedInfo.text}"</span>
-                    </div>`;
+            if (translatedInfos && translatedInfos.length > 0) {
+                const badges = translatedInfos.map(info => `
+                    <div class="mr-2 mb-1 bg-blue-50 text-blue-800 text-xs px-3 py-1 rounded border border-blue-100 inline-block">
+                        <span class="font-bold">${info.label}:</span> "${keyword}" ↔ "${info.text}"
+                    </div>
+                `).join('');
+                
+                transHtml = `<div class="mb-3 flex flex-wrap">${badges}</div>`;
             }
 
             contentDiv.innerHTML = `
@@ -316,7 +321,11 @@
             const keywordInput = document.getElementById('keywordInput');
             const useOCR = document.getElementById('useOCR').checked;
             const strictTable = document.getElementById('strictTable').checked;
-            const autoTranslate = document.getElementById('autoTranslate').checked;
+            
+            // New checkbox inputs
+            const useViEn = document.getElementById('translateViEn').checked;
+            const useEnVi = document.getElementById('translateEnVi').checked;
+
             const globalProgressBar = document.getElementById('globalProgressBar');
             const globalProgressContainer = document.getElementById('globalProgressContainer');
 
@@ -333,18 +342,29 @@
 
             // Prepare Keywords
             let searchKeywords = [originalKeyword];
-            let translatedInfo = { text: null, label: '' };
+            let translatedInfos = [];
 
-            if (autoTranslate) {
-                const transResult = await translateKeyword(originalKeyword);
+            // Explicit Translation Logic
+            if (useViEn) {
+                const transResult = await translateKeyword(originalKeyword, 'vi|en');
                 if (transResult.text && transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
                     searchKeywords.push(transResult.text);
-                    translatedInfo = transResult;
+                    translatedInfos.push(transResult);
+                }
+            }
+            if (useEnVi) {
+                const transResult = await translateKeyword(originalKeyword, 'en|vi');
+                if (transResult.text && transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
+                    // Avoid duplicates if both directions yield same word (rare but possible)
+                    if (!searchKeywords.includes(transResult.text)) {
+                        searchKeywords.push(transResult.text);
+                        translatedInfos.push(transResult);
+                    }
                 }
             }
 
             // CREATE NEW TAB
-            const tabId = createNewTab(originalKeyword, translatedInfo);
+            const tabId = createNewTab(originalKeyword, translatedInfos);
             const tabStatus = document.getElementById(`status-${tabId}`);
             const tabList = document.getElementById(`list-${tabId}`);
             const tabBadge = document.getElementById(`badge-${tabId}`);
