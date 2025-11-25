@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trích Xuất PDF Nâng Cao (Bảng & OCR)</title>
+    <title>Trích Xuất PDF Thông Minh (Đa Ngôn Ngữ)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -18,6 +18,7 @@
             padding: 0 2px;
             border-radius: 2px;
             color: #000;
+            border-bottom: 2px solid #eab308;
         }
         .file-header {
             background-color: #e0f2fe;
@@ -29,12 +30,11 @@
             color: #0369a1;
             border-radius: 4px;
         }
-        /* CSS để hiển thị kết quả - Đã cập nhật font dễ nhìn */
         .result-content {
-            white-space: pre-wrap; /* Giữ nguyên xuống dòng */
-            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; /* Font thường dễ nhìn */
+            white-space: pre-wrap;
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             font-size: 1em;
-            line-height: 1.6; /* Tăng khoảng cách dòng cho thoáng */
+            line-height: 1.6;
         }
         .loader {
             border: 4px solid #f3f3f3;
@@ -47,14 +47,25 @@
             vertical-align: middle;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Tooltip style cho từ khóa dịch */
+        .translated-tag {
+            font-size: 0.75rem;
+            background-color: #dbeafe;
+            color: #1e40af;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            display: inline-block;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen font-sans text-gray-800">
 
     <div class="max-w-5xl mx-auto p-6">
         <header class="mb-8 text-center">
-            <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF & Dữ Liệu Bảng</h1>
-            <p class="text-gray-600">Hỗ trợ tìm kiếm trong bảng biểu, nhiều file và OCR</p>
+            <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF Đa Ngôn Ngữ</h1>
+            <p class="text-gray-600">Tìm kiếm song ngữ (Anh ↔ Việt), hỗ trợ bảng biểu và OCR</p>
         </header>
 
         <div class="bg-white p-6 rounded-lg shadow-md mb-6">
@@ -73,45 +84,58 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">2. Nhập từ khóa</label>
-                    <input type="text" id="keywordInput" placeholder="VD: 500.000, tên nhân viên..." 
+                    <label class="block text-sm font-medium text-gray-700 mb-2">2. Nhập từ khóa (Tiếng Việt hoặc Anh)</label>
+                    <input type="text" id="keywordInput" placeholder="VD: Hợp đồng, Invoice, Total..." 
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     />
+                    <div id="translationPreview" class="mt-2 text-sm text-gray-500 min-h-[20px]"></div>
                 </div>
             </div>
 
-            <div class="mt-4 flex items-center justify-center space-x-6">
-                <div class="flex items-center">
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-6 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                <div class="flex items-center" title="Dùng cho file scan, ảnh chụp">
                     <input type="checkbox" id="useOCR" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
                     <label for="useOCR" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
-                        Bật OCR (Cho file Scan)
+                        Bật OCR (Quét ảnh)
                     </label>
                 </div>
-                <div class="flex items-center">
+                
+                <div class="flex items-center" title="Cố gắng giữ nguyên hàng cột của bảng">
                     <input type="checkbox" id="strictTable" checked class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500">
                     <label for="strictTable" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
-                        Chế độ Bảng (Giữ cấu trúc dòng)
+                        Chế độ Bảng (Giữ cấu trúc)
+                    </label>
+                </div>
+
+                <div class="flex items-center border-l pl-6 border-gray-300" title="Tự động dịch từ khóa sang ngôn ngữ còn lại">
+                    <input type="checkbox" id="autoTranslate" checked class="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500">
+                    <label for="autoTranslate" class="ml-2 text-sm font-bold text-purple-700 cursor-pointer select-none flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+                        </svg>
+                        Dịch tự động (Anh ↔ Việt)
                     </label>
                 </div>
             </div>
 
             <div class="mt-6 text-center">
                 <button onclick="processPDFs()" id="btnProcess"
-                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg transition duration-200 flex items-center justify-center mx-auto space-x-2">
-                    <span>Bắt Đầu Quét</span>
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg transition duration-200 flex items-center justify-center mx-auto space-x-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                    <span>Bắt Đầu Tìm Kiếm</span>
                 </button>
             </div>
             
             <div id="progressContainer" class="hidden mt-4 w-full bg-gray-200 rounded-full h-2.5">
-                <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
             </div>
             <div id="statusMessage" class="mt-2 text-center text-sm text-gray-500 hidden font-medium"></div>
         </div>
 
         <div id="resultContainer" class="hidden">
             <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
-                Tổng Kết Quả
-                <span id="totalMatchCount" class="ml-2 bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">0</span>
+                Kết quả tìm kiếm
+                <span id="activeKeywordsBadge" class="ml-3 text-sm font-normal text-gray-500"></span>
+                <span id="totalMatchCount" class="ml-auto bg-blue-100 text-blue-800 text-xs font-bold px-3 py-1 rounded-full">0</span>
             </h2>
             <ul id="resultsList" class="space-y-4 pb-10"></ul>
         </div>
@@ -123,19 +147,50 @@
             document.getElementById('fileCountLabel').textContent = count > 0 ? `Đã chọn ${count} file` : 'Chưa chọn file nào';
         });
 
+        // Hàm hỗ trợ: Escape Regex
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Hàm Dịch Thuật (Sử dụng API MyMemory miễn phí)
+        async function translateKeyword(text) {
+            // Logic phát hiện ngôn ngữ dựa trên ký tự có dấu
+            const isVietnamese = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(text);
+            
+            // Nếu là Tiếng Việt -> Dịch sang Anh. Nếu không (coi là Anh) -> Dịch sang Việt
+            const langPair = isVietnamese ? 'vi|en' : 'en|vi';
+            const detectedLabel = isVietnamese ? 'Phát hiện Tiếng Việt ➝ Dịch sang Anh' : 'Phát hiện Tiếng Anh ➝ Dịch sang Việt';
+
+            try {
+                const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`);
+                const data = await response.json();
+                
+                if (data && data.responseData && data.responseData.translatedText) {
+                    // API này đôi khi trả về lỗi trong text nếu quá limit, kiểm tra sơ bộ
+                    if (data.responseData.translatedText.includes("MYMEMORY WARNING")) {
+                        console.warn("Translation limit reached or error");
+                        return { text: null, label: detectedLabel };
+                    }
+                    return { text: data.responseData.translatedText, label: detectedLabel };
+                }
+            } catch (error) {
+                console.error("Lỗi dịch thuật:", error);
+                return { text: null, label: detectedLabel };
+            }
+            return { text: null, label: detectedLabel };
+        }
+
         // Hàm sắp xếp text items để tái tạo dòng (cho bảng)
         function extractTextWithLayout(textContent) {
             const items = textContent.items;
             if (items.length === 0) return "";
 
-            // Sắp xếp items: Ưu tiên Y (đảo ngược vì PDF Y=0 ở dưới), sau đó đến X
-            // Sai số cho phép của Y là 2 đơn vị (để xử lý chữ bị lệch nhẹ cùng dòng)
             items.sort((a, b) => {
                 const yDiff = Math.abs(a.transform[5] - b.transform[5]);
-                if (yDiff < 4) { // Cùng dòng
-                    return a.transform[4] - b.transform[4]; // Sort theo X
+                if (yDiff < 4) { 
+                    return a.transform[4] - b.transform[4]; 
                 }
-                return b.transform[5] - a.transform[5]; // Sort theo Y (trên xuống dưới)
+                return b.transform[5] - a.transform[5]; 
             });
 
             let text = "";
@@ -143,14 +198,14 @@
             
             for (const item of items) {
                 if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
-                    text += "\n"; // Xuống dòng nếu Y thay đổi đáng kể
+                    text += "\n"; 
                 } else if (lastY !== -1) {
-                    text += "   "; // Thêm khoảng trắng giả lập khoảng cách cột
+                    text += "   "; 
                 }
                 text += item.str;
                 lastY = item.transform[5];
             }
-            return text + "\n"; // Kết thúc trang bằng xuống dòng
+            return text + "\n"; 
         }
 
         async function processPDFs() {
@@ -158,6 +213,7 @@
             const keywordInput = document.getElementById('keywordInput');
             const useOCR = document.getElementById('useOCR').checked;
             const strictTable = document.getElementById('strictTable').checked;
+            const autoTranslate = document.getElementById('autoTranslate').checked;
             
             const statusMsg = document.getElementById('statusMessage');
             const resultsList = document.getElementById('resultsList');
@@ -165,33 +221,71 @@
             const btnProcess = document.getElementById('btnProcess');
             const progressBar = document.getElementById('progressBar');
             const progressContainer = document.getElementById('progressContainer');
-            const totalMatchBadge = document.getElementById('totalMatchCount'); // Đã thêm dòng này
+            const totalMatchBadge = document.getElementById('totalMatchCount');
+            const activeKeywordsBadge = document.getElementById('activeKeywordsBadge');
+            const translationPreview = document.getElementById('translationPreview');
 
-            // Reset
+            // Reset UI
             resultsList.innerHTML = '';
             resultContainer.classList.add('hidden');
             progressContainer.classList.add('hidden');
             progressBar.style.width = '0%';
             statusMsg.classList.remove('hidden');
             statusMsg.innerHTML = '';
+            translationPreview.innerHTML = '';
             let totalMatchesGlobal = 0;
 
             if (fileInput.files.length === 0) { alert('Vui lòng chọn file PDF.'); return; }
-            if (!keywordInput.value.trim()) { alert('Vui lòng nhập từ khóa.'); return; }
-
-            const files = Array.from(fileInput.files);
-            const keyword = keywordInput.value.trim();
-            const lowerKeyword = keyword.toLowerCase();
+            const originalKeyword = keywordInput.value.trim();
+            if (!originalKeyword) { alert('Vui lòng nhập từ khóa.'); return; }
 
             btnProcess.disabled = true;
             btnProcess.innerHTML = '<div class="loader"></div><span class="ml-2">Đang xử lý...</span>';
             progressContainer.classList.remove('hidden');
 
+            // --- BƯỚC 1: Xử lý từ khóa (Dịch) ---
+            let searchKeywords = [originalKeyword]; // Mảng chứa các từ khóa cần tìm
+            
+            if (autoTranslate) {
+                statusMsg.textContent = "Đang dịch từ khóa...";
+                
+                const transResult = await translateKeyword(originalKeyword);
+                const translated = transResult.text;
+                const label = transResult.label;
+
+                if (translated && translated.toLowerCase() !== originalKeyword.toLowerCase()) {
+                    searchKeywords.push(translated);
+                    // Hiển thị trạng thái rõ ràng cho người dùng
+                    translationPreview.innerHTML = `
+                        <div class="flex items-center text-blue-700 bg-blue-50 p-2 rounded border border-blue-200">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span>${label}: <b>"${translated}"</b></span>
+                        </div>`;
+                } else {
+                    translationPreview.innerHTML = `<span class="text-gray-500 italic">Không tìm thấy bản dịch khác biệt hoặc lỗi kết nối. Chỉ tìm: "${originalKeyword}"</span>`;
+                }
+            } else {
+                translationPreview.innerHTML = `Đang tìm chính xác: <b>"${originalKeyword}"</b>`;
+            }
+
+            // Hiển thị danh sách từ khóa lên UI
+            activeKeywordsBadge.textContent = `(Đang tìm: ${searchKeywords.join(', ')})`;
+
+            // Chuẩn bị Regex để highlight tất cả các từ khóa
+            // Sắp xếp từ dài đến ngắn để highlight đúng (tránh trường hợp từ ngắn nằm trong từ dài)
+            const sortedKeywords = [...searchKeywords].sort((a, b) => b.length - a.length);
+            const regexPattern = sortedKeywords.map(k => escapeRegExp(k)).join('|');
+            const highlightRegex = new RegExp(`(${regexPattern})`, 'gi');
+            
+            // Chuẩn bị danh sách từ khóa chữ thường để so sánh
+            const lowerKeywords = searchKeywords.map(k => k.toLowerCase());
+
+            // --- BƯỚC 2: Khởi tạo OCR (Nếu cần) ---
             let worker = null;
             if (useOCR) {
-                statusMsg.textContent = 'Đang khởi động OCR...';
+                statusMsg.textContent = 'Đang khởi động OCR engine...';
                 try {
-                    worker = await Tesseract.createWorker('vie');
+                    worker = await Tesseract.createWorker('vie'); // Ưu tiên tiếng Việt
                 } catch (e) {
                     alert("Lỗi tải thư viện OCR. Kiểm tra mạng.");
                     btnProcess.disabled = false;
@@ -200,19 +294,21 @@
             }
 
             try {
+                const files = Array.from(fileInput.files);
+                
                 for (let fIndex = 0; fIndex < files.length; fIndex++) {
                     const file = files[fIndex];
                     let fullText = "";
-                    statusMsg.textContent = `File ${fIndex + 1}/${files.length}: ${file.name}`;
                     
                     const arrayBuffer = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
                     const totalPages = pdf.numPages;
 
                     for (let i = 1; i <= totalPages; i++) {
+                        // Cập nhật Progress Bar
                         const progress = ((fIndex + (i / totalPages)) / files.length) * 100;
                         progressBar.style.width = `${progress}%`;
-                        statusMsg.textContent = `File ${fIndex + 1}: ${file.name} (Trang ${i})`;
+                        statusMsg.textContent = `Đang quét: ${file.name} (Trang ${i}/${totalPages})`;
 
                         if (useOCR) {
                             const page = await pdf.getPage(i);
@@ -222,7 +318,6 @@
                             canvas.height = viewport.height; canvas.width = viewport.width;
                             await page.render({ canvasContext: context, viewport: viewport }).promise;
                             
-                            // Tesseract tự động giữ dòng (newline) tốt
                             const { data: { text } } = await worker.recognize(canvas);
                             fullText += text + "\n"; 
                         } else {
@@ -230,23 +325,19 @@
                             const textContent = await page.getTextContent();
                             
                             if (strictTable) {
-                                // Thuật toán mới: Giữ layout dòng
                                 fullText += extractTextWithLayout(textContent);
                             } else {
-                                // Thuật toán cũ: Nối liền
                                 fullText += textContent.items.map(item => item.str).join(' ') + " ";
                             }
                         }
                     }
 
-                    // --- XỬ LÝ TÁCH CÂU / DÒNG ---
+                    // --- BƯỚC 3: Phân tích & Tìm kiếm ---
                     let sentences = [];
+                    // Tách câu dựa trên chế độ
                     if (strictTable || useOCR) {
-                        // Nếu chế độ bảng: Tách bằng xuống dòng (\n) HOẶC dấu câu
-                        // Regex này giữ lại dấu phân cách
                         sentences = fullText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
                     } else {
-                        // Chế độ thường: Chỉ tách bằng dấu câu
                         sentences = fullText.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
                     }
 
@@ -254,8 +345,13 @@
                     const fileResults = [];
 
                     for (let i = 0; i < cleanSentences.length; i++) {
-                        if (cleanSentences[i].toLowerCase().includes(lowerKeyword)) {
-                            // Lấy 5 dòng/câu trước và sau
+                        const currentSentenceLower = cleanSentences[i].toLowerCase();
+                        
+                        // Kiểm tra xem câu hiện tại có chứa BẤT KỲ từ khóa nào không
+                        const isMatch = lowerKeywords.some(kw => currentSentenceLower.includes(kw));
+
+                        if (isMatch) {
+                            // Lấy ngữ cảnh (context)
                             const startIndex = Math.max(0, i - 5);
                             const endIndex = Math.min(cleanSentences.length - 1, i + 5);
                             const contextBlock = cleanSentences.slice(startIndex, endIndex + 1);
@@ -267,13 +363,18 @@
                         }
                     }
 
+                    // --- BƯỚC 4: Hiển thị kết quả ---
                     if (fileResults.length > 0) {
                         totalMatchesGlobal += fileResults.length;
                         resultContainer.classList.remove('hidden');
                         
                         const fileHeader = document.createElement('div');
                         fileHeader.className = "file-header";
-                        fileHeader.textContent = `📄 File: ${file.name} (${fileResults.length} kết quả)`;
+                        fileHeader.innerHTML = `
+                            <div class="flex justify-between items-center">
+                                <span>📄 File: ${file.name}</span>
+                                <span class="bg-blue-600 text-white text-xs px-2 py-1 rounded">${fileResults.length} kết quả</span>
+                            </div>`;
                         resultsList.appendChild(fileHeader);
 
                         fileResults.forEach((res) => {
@@ -282,13 +383,15 @@
                             
                             // Render nội dung
                             const htmlContent = res.content.map((line, idx) => {
-                                let displayLine = line.replace(/\n/g, ''); // Bỏ ký tự \n thừa để hiển thị đẹp
+                                let displayLine = line.replace(/\n/g, ''); 
+                                
+                                // Logic Highlight Mới: Tìm và highlight tất cả các từ khóa
+                                displayLine = displayLine.replace(highlightRegex, match => `<span class="highlight">${match}</span>`);
+
                                 if (idx === res.targetIndex) {
-                                    const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                                    displayLine = displayLine.replace(regex, '<span class="highlight">$1</span>');
-                                    return `<div class="bg-blue-50 font-bold py-1">${displayLine}</div>`;
+                                    return `<div class="bg-blue-50 py-1 pl-2 border-l-2 border-blue-300">${displayLine}</div>`;
                                 }
-                                return `<div>${displayLine}</div>`;
+                                return `<div class="pl-2 opacity-80">${displayLine}</div>`;
                             }).join('');
 
                             li.innerHTML = `<div class="result-content text-sm text-gray-700">${htmlContent}</div>`;
@@ -301,15 +404,25 @@
 
                 if (totalMatchBadge) totalMatchBadge.textContent = totalMatchesGlobal;
                 progressBar.style.width = '100%';
-                if (totalMatchesGlobal === 0) statusMsg.innerHTML = '<span class="text-red-500">Không tìm thấy kết quả.</span>';
-                else statusMsg.textContent = 'Hoàn tất!';
+                
+                if (totalMatchesGlobal === 0) {
+                    statusMsg.innerHTML = `<span class="text-red-500 font-bold">Không tìm thấy kết quả nào cho: "${searchKeywords.join('" hoặc "')}"</span>`;
+                } else {
+                    statusMsg.className = "mt-2 text-center text-sm text-green-600 font-bold";
+                    statusMsg.textContent = 'Hoàn tất quá trình tìm kiếm!';
+                }
 
             } catch (error) {
                 console.error(error);
-                statusMsg.textContent = 'Lỗi: ' + error.message;
+                statusMsg.className = "mt-2 text-center text-sm text-red-600 font-bold";
+                statusMsg.textContent = 'Lỗi nghiêm trọng: ' + error.message;
             } finally {
                 btnProcess.disabled = false;
-                btnProcess.innerHTML = '<span>Bắt Đầu Quét</span>';
+                btnProcess.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <span>Bắt Đầu Tìm Kiếm</span>`;
             }
         }
     </script>
