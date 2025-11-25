@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trích Xuất PDF Nâng Cao (Bảng & OCR)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        .highlight {
+            background-color: #fde047;
+            font-weight: bold;
+            padding: 0 2px;
+            border-radius: 2px;
+            color: #000;
+        }
+        .file-header {
+            background-color: #e0f2fe;
+            border-left: 4px solid #0284c7;
+            padding: 10px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #0369a1;
+            border-radius: 4px;
+        }
+        /* CSS để hiển thị dạng bảng tốt hơn */
+        .result-content {
+            white-space: pre-wrap; /* Giữ nguyên xuống dòng */
+            font-family: 'Courier New', Courier, monospace; /* Font monospace để các cột thẳng hàng hơn */
+            font-size: 0.9em;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+
+    <div class="max-w-5xl mx-auto p-6">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF & Dữ Liệu Bảng</h1>
+            <p class="text-gray-600">Hỗ trợ tìm kiếm trong bảng biểu, nhiều file và OCR</p>
+        </header>
+
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">1. Chọn file PDF (Giữ Ctrl để chọn nhiều)</label>
+                    <input type="file" id="pdfInput" accept=".pdf" multiple
+                        class="block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-full file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-50 file:text-blue-700
+                        hover:file:bg-blue-100 cursor-pointer border border-gray-300 rounded-lg p-1"
+                    />
+                    <p class="text-xs text-gray-400 mt-1 italic" id="fileCountLabel">Chưa chọn file nào</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">2. Nhập từ khóa</label>
+                    <input type="text" id="keywordInput" placeholder="VD: 500.000, tên nhân viên..." 
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                </div>
+            </div>
+
+            <div class="mt-4 flex items-center justify-center space-x-6">
+                <div class="flex items-center">
+                    <input type="checkbox" id="useOCR" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="useOCR" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
+                        Bật OCR (Cho file Scan)
+                    </label>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="strictTable" checked class="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500">
+                    <label for="strictTable" class="ml-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
+                        Chế độ Bảng (Giữ cấu trúc dòng)
+                    </label>
+                </div>
+            </div>
+
+            <div class="mt-6 text-center">
+                <button onclick="processPDFs()" id="btnProcess"
+                    class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-8 rounded-lg transition duration-200 flex items-center justify-center mx-auto space-x-2">
+                    <span>Bắt Đầu Quét</span>
+                </button>
+            </div>
+            
+            <div id="progressContainer" class="hidden mt-4 w-full bg-gray-200 rounded-full h-2.5">
+                <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+            </div>
+            <div id="statusMessage" class="mt-2 text-center text-sm text-gray-500 hidden font-medium"></div>
+        </div>
+
+        <div id="resultContainer" class="hidden">
+            <h2 class="text-xl font-semibold mb-4 text-gray-800 flex items-center">
+                Tổng Kết Quả
+                <span id="totalMatchCount" class="ml-2 bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded">0</span>
+            </h2>
+            <ul id="resultsList" class="space-y-4 pb-10"></ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('pdfInput').addEventListener('change', function() {
+            const count = this.files.length;
+            document.getElementById('fileCountLabel').textContent = count > 0 ? `Đã chọn ${count} file` : 'Chưa chọn file nào';
+        });
+
+        // Hàm sắp xếp text items để tái tạo dòng (cho bảng)
+        function extractTextWithLayout(textContent) {
+            const items = textContent.items;
+            if (items.length === 0) return "";
+
+            // Sắp xếp items: Ưu tiên Y (đảo ngược vì PDF Y=0 ở dưới), sau đó đến X
+            // Sai số cho phép của Y là 2 đơn vị (để xử lý chữ bị lệch nhẹ cùng dòng)
+            items.sort((a, b) => {
+                const yDiff = Math.abs(a.transform[5] - b.transform[5]);
+                if (yDiff < 4) { // Cùng dòng
+                    return a.transform[4] - b.transform[4]; // Sort theo X
+                }
+                return b.transform[5] - a.transform[5]; // Sort theo Y (trên xuống dưới)
+            });
+
+            let text = "";
+            let lastY = -1;
+            
+            for (const item of items) {
+                if (lastY !== -1 && Math.abs(item.transform[5] - lastY) > 5) {
+                    text += "\n"; // Xuống dòng nếu Y thay đổi đáng kể
+                } else if (lastY !== -1) {
+                    text += "   "; // Thêm khoảng trắng giả lập khoảng cách cột
+                }
+                text += item.str;
+                lastY = item.transform[5];
+            }
+            return text + "\n"; // Kết thúc trang bằng xuống dòng
+        }
+
+        async function processPDFs() {
+            const fileInput = document.getElementById('pdfInput');
+            const keywordInput = document.getElementById('keywordInput');
+            const useOCR = document.getElementById('useOCR').checked;
+            const strictTable = document.getElementById('strictTable').checked;
+            
+            const statusMsg = document.getElementById('statusMessage');
+            const resultsList = document.getElementById('resultsList');
+            const resultContainer = document.getElementById('resultContainer');
+            const btnProcess = document.getElementById('btnProcess');
+            const progressBar = document.getElementById('progressBar');
+            const progressContainer = document.getElementById('progressContainer');
+            const totalMatchBadge = document.getElementById('totalMatchCount'); // Đã thêm dòng này
+
+            // Reset
+            resultsList.innerHTML = '';
+            resultContainer.classList.add('hidden');
+            progressContainer.classList.add('hidden');
+            progressBar.style.width = '0%';
+            statusMsg.classList.remove('hidden');
+            statusMsg.innerHTML = '';
+            let totalMatchesGlobal = 0;
+
+            if (fileInput.files.length === 0) { alert('Vui lòng chọn file PDF.'); return; }
+            if (!keywordInput.value.trim()) { alert('Vui lòng nhập từ khóa.'); return; }
+
+            const files = Array.from(fileInput.files);
+            const keyword = keywordInput.value.trim();
+            const lowerKeyword = keyword.toLowerCase();
+
+            btnProcess.disabled = true;
+            btnProcess.innerHTML = '<div class="loader"></div><span class="ml-2">Đang xử lý...</span>';
+            progressContainer.classList.remove('hidden');
+
+            let worker = null;
+            if (useOCR) {
+                statusMsg.textContent = 'Đang khởi động OCR...';
+                try {
+                    worker = await Tesseract.createWorker('vie');
+                } catch (e) {
+                    alert("Lỗi tải thư viện OCR. Kiểm tra mạng.");
+                    btnProcess.disabled = false;
+                    return;
+                }
+            }
+
+            try {
+                for (let fIndex = 0; fIndex < files.length; fIndex++) {
+                    const file = files[fIndex];
+                    let fullText = "";
+                    statusMsg.textContent = `File ${fIndex + 1}/${files.length}: ${file.name}`;
+                    
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const totalPages = pdf.numPages;
+
+                    for (let i = 1; i <= totalPages; i++) {
+                        const progress = ((fIndex + (i / totalPages)) / files.length) * 100;
+                        progressBar.style.width = `${progress}%`;
+                        statusMsg.textContent = `File ${fIndex + 1}: ${file.name} (Trang ${i})`;
+
+                        if (useOCR) {
+                            const page = await pdf.getPage(i);
+                            const viewport = page.getViewport({ scale: 2.0 });
+                            const canvas = document.createElement('canvas');
+                            const context = canvas.getContext('2d');
+                            canvas.height = viewport.height; canvas.width = viewport.width;
+                            await page.render({ canvasContext: context, viewport: viewport }).promise;
+                            
+                            // Tesseract tự động giữ dòng (newline) tốt
+                            const { data: { text } } = await worker.recognize(canvas);
+                            fullText += text + "\n"; 
+                        } else {
+                            const page = await pdf.getPage(i);
+                            const textContent = await page.getTextContent();
+                            
+                            if (strictTable) {
+                                // Thuật toán mới: Giữ layout dòng
+                                fullText += extractTextWithLayout(textContent);
+                            } else {
+                                // Thuật toán cũ: Nối liền
+                                fullText += textContent.items.map(item => item.str).join(' ') + " ";
+                            }
+                        }
+                    }
+
+                    // --- XỬ LÝ TÁCH CÂU / DÒNG ---
+                    let sentences = [];
+                    if (strictTable || useOCR) {
+                        // Nếu chế độ bảng: Tách bằng xuống dòng (\n) HOẶC dấu câu
+                        // Regex này giữ lại dấu phân cách
+                        sentences = fullText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
+                    } else {
+                        // Chế độ thường: Chỉ tách bằng dấu câu
+                        sentences = fullText.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
+                    }
+
+                    const cleanSentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
+                    const fileResults = [];
+
+                    for (let i = 0; i < cleanSentences.length; i++) {
+                        if (cleanSentences[i].toLowerCase().includes(lowerKeyword)) {
+                            // Lấy 5 dòng/câu trước và sau
+                            const startIndex = Math.max(0, i - 5);
+                            const endIndex = Math.min(cleanSentences.length - 1, i + 5);
+                            const contextBlock = cleanSentences.slice(startIndex, endIndex + 1);
+                            
+                            fileResults.push({
+                                content: contextBlock,
+                                targetIndex: i - startIndex
+                            });
+                        }
+                    }
+
+                    if (fileResults.length > 0) {
+                        totalMatchesGlobal += fileResults.length;
+                        resultContainer.classList.remove('hidden');
+                        
+                        const fileHeader = document.createElement('div');
+                        fileHeader.className = "file-header";
+                        fileHeader.textContent = `📄 File: ${file.name} (${fileResults.length} kết quả)`;
+                        resultsList.appendChild(fileHeader);
+
+                        fileResults.forEach((res) => {
+                            const li = document.createElement('li');
+                            li.className = "bg-white p-4 rounded-lg shadow border-l-4 border-gray-300 hover:border-blue-500 transition mb-4 ml-4 overflow-x-auto";
+                            
+                            // Render nội dung
+                            const htmlContent = res.content.map((line, idx) => {
+                                let displayLine = line.replace(/\n/g, ''); // Bỏ ký tự \n thừa để hiển thị đẹp
+                                if (idx === res.targetIndex) {
+                                    const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                                    displayLine = displayLine.replace(regex, '<span class="highlight">$1</span>');
+                                    return `<div class="bg-blue-50 font-bold py-1">${displayLine}</div>`;
+                                }
+                                return `<div>${displayLine}</div>`;
+                            }).join('');
+
+                            li.innerHTML = `<div class="result-content text-sm text-gray-700">${htmlContent}</div>`;
+                            resultsList.appendChild(li);
+                        });
+                    }
+                }
+
+                if (useOCR && worker) await worker.terminate();
+
+                if (totalMatchBadge) totalMatchBadge.textContent = totalMatchesGlobal;
+                progressBar.style.width = '100%';
+                if (totalMatchesGlobal === 0) statusMsg.innerHTML = '<span class="text-red-500">Không tìm thấy kết quả.</span>';
+                else statusMsg.textContent = 'Hoàn tất!';
+
+            } catch (error) {
+                console.error(error);
+                statusMsg.textContent = 'Lỗi: ' + error.message;
+            } finally {
+                btnProcess.disabled = false;
+                btnProcess.innerHTML = '<span>Bắt Đầu Quét</span>';
+            }
+        }
+    </script>
+</body>
+</html>
