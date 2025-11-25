@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trích Xuất PDF Theo Tab (Đa Ngôn Ngữ)</title>
+    <title>Trích Xuất PDF Theo Tab & Bookmark</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -88,14 +88,31 @@
             from { opacity: 0; transform: translateY(5px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* Modal Styles */
+        .modal {
+            transition: opacity 0.25s ease;
+        }
+        body.modal-active {
+            overflow-x: hidden;
+            overflow-y: visible !important;
+        }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800 relative">
 
     <div class="max-w-6xl mx-auto p-4 md:p-6">
-        <header class="mb-6 text-center">
+        <header class="mb-6 text-center relative">
             <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF Đa Tab</h1>
             <p class="text-gray-600">Tìm kiếm song ngữ, OCR và tự động dịch đoạn văn tiếng Anh</p>
+            
+            <!-- Bookmark Button -->
+            <button onclick="toggleBookmarkModal()" class="absolute top-0 right-0 mt-2 md:mt-0 text-yellow-600 hover:text-yellow-700 font-medium flex items-center bg-yellow-50 hover:bg-yellow-100 px-3 py-1 rounded border border-yellow-200 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+                Bookmarks
+            </button>
         </header>
 
         <!-- INPUT AREA -->
@@ -183,6 +200,45 @@
 
     </div>
 
+    <!-- BOOKMARK MODAL -->
+    <div id="bookmarkModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
+        <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50" onclick="toggleBookmarkModal()"></div>
+        
+        <div class="modal-container bg-white w-11/12 md:max-w-lg mx-auto rounded shadow-lg z-50 overflow-y-auto max-h-[90vh]">
+            
+            <div class="modal-content py-4 text-left px-6">
+                <!-- Title -->
+                <div class="flex justify-between items-center pb-3 border-b mb-4">
+                    <p class="text-2xl font-bold text-gray-700">📌 Quản lý Bookmarks</p>
+                    <div class="modal-close cursor-pointer z-50" onclick="toggleBookmarkModal()">
+                        <svg class="fill-current text-black" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
+                            <path d="M14.53 4.53l-1.06-1.06L9 7.94 4.53 3.47 3.47 4.53 7.94 9l-4.47 4.47 1.06 1.06L9 10.06l4.47 4.47 1.06-1.06L10.06 9z"></path>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Add New Form -->
+                <div class="bg-gray-50 p-3 rounded-md mb-4 border border-gray-200">
+                    <h4 class="text-sm font-semibold text-gray-600 mb-2">Thêm mới:</h4>
+                    <input type="text" id="bmName" placeholder="Tên gợi nhớ (VD: Tài liệu dự án X)" class="w-full mb-2 p-2 border rounded text-sm focus:outline-none focus:border-blue-500">
+                    <input type="text" id="bmPath" placeholder="Đường dẫn folder hoặc Link Google Drive..." class="w-full mb-2 p-2 border rounded text-sm focus:outline-none focus:border-blue-500">
+                    <button onclick="addBookmark()" class="w-full bg-blue-600 text-white p-2 rounded text-sm font-bold hover:bg-blue-700 transition">Thêm Bookmark</button>
+                </div>
+
+                <!-- List -->
+                <h4 class="text-sm font-semibold text-gray-600 mb-2">Danh sách đã lưu:</h4>
+                <div id="bookmarkList" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    <!-- Bookmark items will be generated here -->
+                </div>
+
+                <!-- Footer -->
+                <div class="mt-4 pt-2 text-right border-t">
+                    <button onclick="toggleBookmarkModal()" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm">Đóng</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- GLOBAL VARIABLES & HELPERS ---
         let searchIdCounter = 0;
@@ -196,6 +252,154 @@
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
+
+        // --- BOOKMARK LOGIC ---
+        const BOOKMARK_KEY = 'pdf_app_bookmarks';
+        let bookmarks = [];
+
+        function initBookmarks() {
+            const stored = localStorage.getItem(BOOKMARK_KEY);
+            if (stored) {
+                try {
+                    bookmarks = JSON.parse(stored);
+                } catch (e) {
+                    bookmarks = [];
+                }
+            }
+            renderBookmarks();
+        }
+
+        function toggleBookmarkModal() {
+            const body = document.querySelector('body');
+            const modal = document.getElementById('bookmarkModal');
+            modal.classList.toggle('opacity-0');
+            modal.classList.toggle('pointer-events-none');
+            body.classList.toggle('modal-active');
+        }
+
+        function addBookmark() {
+            const nameInput = document.getElementById('bmName');
+            const pathInput = document.getElementById('bmPath');
+            const name = nameInput.value.trim();
+            const path = pathInput.value.trim();
+
+            if (!name || !path) {
+                alert("Vui lòng nhập cả tên và đường dẫn!");
+                return;
+            }
+
+            bookmarks.push({ name, path, id: Date.now() });
+            localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarks));
+            
+            // Clear inputs
+            nameInput.value = '';
+            pathInput.value = '';
+            
+            renderBookmarks();
+        }
+
+        function deleteBookmark(id) {
+            if(confirm('Bạn có chắc muốn xóa bookmark này?')) {
+                bookmarks = bookmarks.filter(b => b.id !== id);
+                localStorage.setItem(BOOKMARK_KEY, JSON.stringify(bookmarks));
+                renderBookmarks();
+            }
+        }
+
+        // Updated copyToClipboard function using execCommand fallback
+        function copyToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // Ensure it's not visible but part of DOM
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    alert("Đã copy đường dẫn! Bạn hãy dán (Ctrl+V) vào hộp thoại chọn file.");
+                } else {
+                    prompt("Không thể tự động copy. Hãy copy thủ công:", text);
+                }
+            } catch (err) {
+                console.error('Fallback copy failed', err);
+                prompt("Hãy copy thủ công:", text);
+            }
+            
+            document.body.removeChild(textArea);
+        }
+
+        // Helper to escape HTML characters for display
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function renderBookmarks() {
+            const container = document.getElementById('bookmarkList');
+            container.innerHTML = '';
+
+            if (bookmarks.length === 0) {
+                container.innerHTML = '<p class="text-sm text-gray-400 text-center py-4">Chưa có bookmark nào.</p>';
+                return;
+            }
+
+            bookmarks.forEach(bm => {
+                const isUrl = bm.path.startsWith('http');
+                const safeName = escapeHtml(bm.name);
+                const safePathDisplay = escapeHtml(bm.path);
+                const encodedPath = encodeURIComponent(bm.path); // Encode path to be safe inside JS string
+
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between bg-white border p-2 rounded shadow-sm hover:shadow-md transition";
+                
+                let actionBtn = '';
+                if (isUrl) {
+                    // Safe for HTML href because of escapeHtml
+                    actionBtn = `
+                        <a href="${safePathDisplay}" target="_blank" class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 hover:bg-green-200 flex items-center mr-2">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+                            Mở Link
+                        </a>`;
+                } else {
+                    // Safe for onclick because we decode the encoded string at runtime
+                    actionBtn = `
+                        <button onclick="copyToClipboard(decodeURIComponent('${encodedPath}'))" class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded border border-gray-200 hover:bg-gray-200 flex items-center mr-2" title="Copy đường dẫn để Paste vào cửa sổ chọn file">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+                            Copy Path
+                        </button>`;
+                }
+
+                div.innerHTML = `
+                    <div class="overflow-hidden mr-2">
+                        <div class="font-bold text-sm text-gray-700 truncate">${safeName}</div>
+                        <div class="text-xs text-gray-400 truncate" title="${safePathDisplay}">${safePathDisplay}</div>
+                    </div>
+                    <div class="flex items-center shrink-0">
+                        ${actionBtn}
+                        <button onclick="deleteBookmark(${bm.id})" class="text-red-400 hover:text-red-600 p-1">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Initialize Bookmarks on Load
+        window.addEventListener('DOMContentLoaded', initBookmarks);
+
 
         // --- LANGUAGE DETECTION & TRANSLATION ---
         
@@ -300,8 +504,8 @@
                 const badges = translatedInfos.map(info => {
                     if (info.error) {
                         return `<div class="mr-2 mb-1 bg-yellow-50 text-yellow-800 text-xs px-3 py-1 rounded border border-yellow-200 inline-block" title="${info.error}"><span class="font-bold text-red-500">⚠ ${info.label}:</span> ${info.error}</div>`;
-                    } else if (info.isDuplicate) {
-                         return `<div class="mr-2 mb-1 bg-gray-50 text-gray-500 text-xs px-3 py-1 rounded border border-gray-200 inline-block italic"><span class="font-bold">${info.label}:</span> Trùng khớp (Đã bỏ qua)</div>`;
+                    } else if (info.isDuplicate) { 
+                        return `<div class="mr-2 mb-1 bg-gray-50 text-gray-500 text-xs px-3 py-1 rounded border border-gray-200 inline-block italic"><span class="font-bold">${info.label}:</span> Trùng khớp (Đã bỏ qua)</div>`;
                     } else {
                         return `<div class="mr-2 mb-1 bg-blue-50 text-blue-800 text-xs px-3 py-1 rounded border border-blue-100 inline-block"><span class="font-bold">${info.label}:</span> "${keyword}" ↔ "${info.text}"</div>`;
                     }
