@@ -36,6 +36,16 @@
             font-size: 1em;
             line-height: 1.6;
         }
+        .translation-block {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed #cbd5e1;
+            font-size: 0.9em;
+            color: #475569;
+            background-color: #f8fafc;
+            padding: 8px;
+            border-radius: 4px;
+        }
         .loader {
             border: 4px solid #f3f3f3;
             border-top: 4px solid #3b82f6;
@@ -45,6 +55,12 @@
             animation: spin 1s linear infinite;
             display: inline-block;
             vertical-align: middle;
+        }
+        .mini-loader {
+            width: 14px;
+            height: 14px;
+            border-width: 2px;
+            border-top-color: #64748b;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
@@ -79,7 +95,7 @@
     <div class="max-w-6xl mx-auto p-4 md:p-6">
         <header class="mb-6 text-center">
             <h1 class="text-3xl font-bold text-blue-700 mb-2">Trích Xuất PDF Đa Tab</h1>
-            <p class="text-gray-600">Tìm kiếm song ngữ, OCR và quản lý kết quả theo từng Tab riêng biệt</p>
+            <p class="text-gray-600">Tìm kiếm song ngữ, OCR và tự động dịch đoạn văn tiếng Anh</p>
         </header>
 
         <!-- INPUT AREA -->
@@ -181,25 +197,58 @@
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
-        // --- TRANSLATION LOGIC ---
-        // langPair: 'vi|en' hoặc 'en|vi'
-        async function translateKeyword(text, langPair) {
-            const detectedLabel = langPair === 'vi|en' ? 'Việt ➝ Anh' : 'Anh ➝ Việt';
+        // --- LANGUAGE DETECTION & TRANSLATION ---
+        
+        // Kiểm tra xem text có phải tiếng Việt không
+        function isVietnameseText(text) {
+            // Regex kiểm tra các nguyên âm có dấu tiếng Việt
+            return /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(text);
+        }
+
+        async function fetchAndDisplayTranslation(text, elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
 
             try {
-                const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}`);
+                // Sử dụng API để dịch từ Anh sang Việt
+                const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|vi&mt=1`);
                 const data = await response.json();
-                
+
                 if (data && data.responseData && data.responseData.translatedText) {
-                    if (data.responseData.translatedText.includes("MYMEMORY WARNING")) {
-                        return { text: null, label: detectedLabel };
-                    }
-                    return { text: data.responseData.translatedText, label: detectedLabel };
+                    // Cập nhật DOM
+                    el.innerHTML = `<span class="font-bold text-blue-600">💡 Dịch tự động:</span> <span class="italic">${data.responseData.translatedText}</span>`;
+                } else {
+                    el.style.display = 'none'; // Ẩn nếu không có dữ liệu
                 }
             } catch (error) {
-                console.error("Lỗi dịch:", error);
+                console.warn("Translation failed for snippet", error);
+                el.innerHTML = `<span class="text-xs text-red-400">Không thể tải bản dịch</span>`;
             }
-            return { text: null, label: detectedLabel };
+        }
+
+        // Dịch từ khóa (giữ nguyên logic cũ)
+        async function translateKeyword(text, langPair) {
+            const detectedLabel = langPair === 'vi|en' ? 'Việt ➝ Anh' : 'Anh ➝ Việt';
+            try {
+                const response = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${langPair}&mt=1`);
+                const data = await response.json();
+                
+                if (data.responseStatus !== 200) {
+                    let errorMsg = data.responseDetails || "Lỗi từ dịch vụ dịch";
+                    if (data.responseStatus === 429) errorMsg = "Hết lượt dịch miễn phí";
+                    return { text: null, label: detectedLabel, error: errorMsg };
+                }
+
+                if (data && data.responseData && data.responseData.translatedText) {
+                    if (data.responseData.translatedText.includes("MYMEMORY WARNING")) {
+                        return { text: null, label: detectedLabel, error: "Hết lượt dịch" };
+                    }
+                    return { text: data.responseData.translatedText, label: detectedLabel, error: null };
+                }
+            } catch (error) {
+                return { text: null, label: detectedLabel, error: "Lỗi mạng" };
+            }
+            return { text: null, label: detectedLabel, error: "No Data" };
         }
 
         // --- TEXT EXTRACTION HELPER ---
@@ -222,16 +271,13 @@
         }
 
         // --- TAB MANAGEMENT LOGIC ---
-        // translatedInfos is now an Array of objects {text, label}
         function createNewTab(keyword, translatedInfos) {
             searchIdCounter++;
             const tabId = `tab-${searchIdCounter}`;
             
-            // 1. Hide empty state
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('mainTabsContainer').classList.remove('hidden');
 
-            // 2. Create Tab Button
             const tabBtn = document.createElement('button');
             tabBtn.className = 'tab-btn flex items-center px-4 py-2 mr-2 text-sm font-medium text-gray-500 bg-white border border-transparent rounded-t-lg hover:text-gray-700 hover:border-gray-300 focus:outline-none';
             tabBtn.dataset.target = tabId;
@@ -245,20 +291,21 @@
             tabBtn.onclick = (e) => switchTab(tabId);
             document.getElementById('tabsNav').appendChild(tabBtn);
 
-            // 3. Create Tab Content Container
             const contentDiv = document.createElement('div');
             contentDiv.id = tabId;
             contentDiv.className = 'tab-content';
             
-            // Translation info block
             let transHtml = '';
             if (translatedInfos && translatedInfos.length > 0) {
-                const badges = translatedInfos.map(info => `
-                    <div class="mr-2 mb-1 bg-blue-50 text-blue-800 text-xs px-3 py-1 rounded border border-blue-100 inline-block">
-                        <span class="font-bold">${info.label}:</span> "${keyword}" ↔ "${info.text}"
-                    </div>
-                `).join('');
-                
+                const badges = translatedInfos.map(info => {
+                    if (info.error) {
+                        return `<div class="mr-2 mb-1 bg-yellow-50 text-yellow-800 text-xs px-3 py-1 rounded border border-yellow-200 inline-block" title="${info.error}"><span class="font-bold text-red-500">⚠ ${info.label}:</span> ${info.error}</div>`;
+                    } else if (info.isDuplicate) {
+                         return `<div class="mr-2 mb-1 bg-gray-50 text-gray-500 text-xs px-3 py-1 rounded border border-gray-200 inline-block italic"><span class="font-bold">${info.label}:</span> Trùng khớp (Đã bỏ qua)</div>`;
+                    } else {
+                        return `<div class="mr-2 mb-1 bg-blue-50 text-blue-800 text-xs px-3 py-1 rounded border border-blue-100 inline-block"><span class="font-bold">${info.label}:</span> "${keyword}" ↔ "${info.text}"</div>`;
+                    }
+                }).join('');
                 transHtml = `<div class="mb-3 flex flex-wrap">${badges}</div>`;
             }
 
@@ -274,21 +321,15 @@
             `;
             document.getElementById('tabsContentArea').appendChild(contentDiv);
 
-            // 4. Activate new tab
             switchTab(tabId);
-
             return tabId;
         }
 
         function switchTab(tabId) {
-            // Remove active class from all buttons and contents
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            
-            // Activate target
             const btn = document.querySelector(`.tab-btn[data-target="${tabId}"]`);
             const content = document.getElementById(tabId);
-            
             if (btn && content) {
                 btn.classList.add('active');
                 content.classList.add('active');
@@ -296,19 +337,15 @@
         }
 
         function closeTab(tabId, event) {
-            event.stopPropagation(); // Prevent switching to tab when clicking close
+            event.stopPropagation();
             const btn = document.querySelector(`.tab-btn[data-target="${tabId}"]`);
             const content = document.getElementById(tabId);
-            
             if (btn) btn.remove();
             if (content) content.remove();
-
-            // If we closed the active tab, switch to the last available one
             if (!document.querySelector('.tab-btn.active')) {
                 const remainingBtns = document.querySelectorAll('.tab-btn');
-                if (remainingBtns.length > 0) {
-                    switchTab(remainingBtns[remainingBtns.length - 1].dataset.target);
-                } else {
+                if (remainingBtns.length > 0) switchTab(remainingBtns[remainingBtns.length - 1].dataset.target);
+                else {
                     document.getElementById('mainTabsContainer').classList.add('hidden');
                     document.getElementById('emptyState').classList.remove('hidden');
                 }
@@ -321,11 +358,8 @@
             const keywordInput = document.getElementById('keywordInput');
             const useOCR = document.getElementById('useOCR').checked;
             const strictTable = document.getElementById('strictTable').checked;
-            
-            // New checkbox inputs
             const useViEn = document.getElementById('translateViEn').checked;
             const useEnVi = document.getElementById('translateEnVi').checked;
-
             const globalProgressBar = document.getElementById('globalProgressBar');
             const globalProgressContainer = document.getElementById('globalProgressContainer');
 
@@ -333,49 +367,54 @@
             if (fileInput.files.length === 0) { alert('Vui lòng chọn file PDF.'); return; }
             if (!originalKeyword) { alert('Vui lòng nhập từ khóa.'); return; }
 
-            // Start UI Feedback
             isProcessing = true;
             document.getElementById('btnProcess').disabled = true;
             document.getElementById('btnProcess').classList.add('opacity-50', 'cursor-not-allowed');
             globalProgressContainer.classList.remove('hidden');
             globalProgressBar.style.width = '5%';
 
-            // Prepare Keywords
             let searchKeywords = [originalKeyword];
             let translatedInfos = [];
 
-            // Explicit Translation Logic
             if (useViEn) {
                 const transResult = await translateKeyword(originalKeyword, 'vi|en');
-                if (transResult.text && transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
-                    searchKeywords.push(transResult.text);
-                    translatedInfos.push(transResult);
+                if (transResult.error) translatedInfos.push(transResult);
+                else if (transResult.text) {
+                    if (transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
+                        searchKeywords.push(transResult.text);
+                        translatedInfos.push(transResult);
+                    } else {
+                        transResult.isDuplicate = true;
+                        translatedInfos.push(transResult);
+                    }
                 }
             }
             if (useEnVi) {
                 const transResult = await translateKeyword(originalKeyword, 'en|vi');
-                if (transResult.text && transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
-                    // Avoid duplicates if both directions yield same word (rare but possible)
-                    if (!searchKeywords.includes(transResult.text)) {
-                        searchKeywords.push(transResult.text);
+                if (transResult.error) translatedInfos.push(transResult);
+                else if (transResult.text) {
+                    if (transResult.text.toLowerCase() !== originalKeyword.toLowerCase()) {
+                        if (!searchKeywords.includes(transResult.text)) {
+                            searchKeywords.push(transResult.text);
+                            translatedInfos.push(transResult);
+                        }
+                    } else if (!translatedInfos.some(i => i.isDuplicate)) {
+                        transResult.isDuplicate = true;
                         translatedInfos.push(transResult);
                     }
                 }
             }
 
-            // CREATE NEW TAB
             const tabId = createNewTab(originalKeyword, translatedInfos);
             const tabStatus = document.getElementById(`status-${tabId}`);
             const tabList = document.getElementById(`list-${tabId}`);
             const tabBadge = document.getElementById(`badge-${tabId}`);
 
-            // Prepare Regex
             const sortedKeywords = [...searchKeywords].sort((a, b) => b.length - a.length);
             const regexPattern = sortedKeywords.map(k => escapeRegExp(k)).join('|');
             const highlightRegex = new RegExp(`(${regexPattern})`, 'gi');
             const lowerKeywords = searchKeywords.map(k => k.toLowerCase());
 
-            // Initialize OCR if needed
             let worker = null;
             if (useOCR) {
                 tabStatus.textContent = "Đang tải OCR Engine...";
@@ -396,7 +435,6 @@
                     const file = files[fIndex];
                     let fullText = "";
                     
-                    // Update Status
                     tabStatus.innerHTML = `<div class="loader mr-2"></div> Đang quét: ${file.name} (${fIndex + 1}/${files.length})`;
 
                     const arrayBuffer = await file.arrayBuffer();
@@ -404,7 +442,6 @@
                     const totalPages = pdf.numPages;
 
                     for (let i = 1; i <= totalPages; i++) {
-                        // Update Progress
                         const progress = ((fIndex + (i / totalPages)) / files.length) * 100;
                         globalProgressBar.style.width = `${progress}%`;
 
@@ -428,13 +465,9 @@
                         }
                     }
 
-                    // --- SEARCH LOGIC ---
                     let sentences = [];
-                    if (strictTable || useOCR) {
-                        sentences = fullText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
-                    } else {
-                        sentences = fullText.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
-                    }
+                    if (strictTable || useOCR) sentences = fullText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [];
+                    else sentences = fullText.replace(/\s+/g, ' ').match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [];
 
                     const cleanSentences = sentences.map(s => s.trim()).filter(s => s.length > 0);
                     const fileResults = [];
@@ -442,14 +475,13 @@
                     for (let sIdx = 0; sIdx < cleanSentences.length; sIdx++) {
                         const currentSentenceLower = cleanSentences[sIdx].toLowerCase();
                         if (lowerKeywords.some(kw => currentSentenceLower.includes(kw))) {
-                            const startIndex = Math.max(0, sIdx - 3); // Context context -3 to +3
+                            const startIndex = Math.max(0, sIdx - 3);
                             const endIndex = Math.min(cleanSentences.length - 1, sIdx + 3);
                             const contextBlock = cleanSentences.slice(startIndex, endIndex + 1);
                             fileResults.push({ content: contextBlock, targetIndex: sIdx - startIndex });
                         }
                     }
 
-                    // --- APPEND RESULTS TO TAB ---
                     if (fileResults.length > 0) {
                         totalMatchesInTab += fileResults.length;
                         
@@ -462,26 +494,41 @@
                             </div>`;
                         tabList.appendChild(fileHeader);
 
-                        fileResults.forEach((res) => {
+                        fileResults.forEach((res, rIdx) => {
                             const li = document.createElement('li');
                             li.className = "bg-white p-4 rounded-lg shadow border-l-4 border-gray-300 hover:border-blue-500 transition mb-4 ml-4 overflow-x-auto";
                             
+                            // 1. Render Original Content
                             const htmlContent = res.content.map((line, idx) => {
                                 let displayLine = line.replace(/\n/g, ''); 
                                 displayLine = displayLine.replace(highlightRegex, match => `<span class="highlight">${match}</span>`);
-                                if (idx === res.targetIndex) {
-                                    return `<div class="bg-blue-50 py-1 pl-2 border-l-2 border-blue-300 font-medium text-gray-900">${displayLine}</div>`;
-                                }
+                                if (idx === res.targetIndex) return `<div class="bg-blue-50 py-1 pl-2 border-l-2 border-blue-300 font-medium text-gray-900">${displayLine}</div>`;
                                 return `<div class="pl-2 opacity-70 text-gray-600">${displayLine}</div>`;
                             }).join('');
 
-                            li.innerHTML = `<div class="result-content text-sm">${htmlContent}</div>`;
+                            // 2. Translation Logic for the Result Snippet
+                            const fullSnippetText = res.content.join(' ').replace(/\s+/g, ' ').trim();
+                            let translationContainer = '';
+                            
+                            // Nếu không phải tiếng Việt => Hiển thị khung dịch
+                            if (!isVietnameseText(fullSnippetText)) {
+                                const transId = `trans-${tabId}-${fIndex}-${rIdx}`;
+                                translationContainer = `
+                                    <div class="translation-block" id="${transId}">
+                                        <div class="loader mini-loader mr-2 align-middle inline-block"></div> 
+                                        <span class="italic text-gray-400">Đang dịch đoạn văn này...</span>
+                                    </div>
+                                `;
+                                // Trigger async translation (không await để không block UI)
+                                fetchAndDisplayTranslation(fullSnippetText, transId);
+                            }
+
+                            li.innerHTML = `<div class="result-content text-sm">${htmlContent}</div>${translationContainer}`;
                             tabList.appendChild(li);
                         });
                     }
                 }
 
-                // Finalize Tab State
                 if (totalMatchesInTab === 0) {
                     tabStatus.className = "text-sm font-bold text-red-500";
                     tabStatus.textContent = "Không tìm thấy kết quả nào.";
